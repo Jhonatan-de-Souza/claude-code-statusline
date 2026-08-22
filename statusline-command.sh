@@ -6,11 +6,16 @@ input=$(cat)
 GREEN='\033[32m'; YELLOW='\033[33m'; RED='\033[31m'; CYAN='\033[36m'; GRAY='\033[2m'; RESET='\033[0m'
 BAR_WIDTH=10
 
+# (yellow, red) thresholds per bar. Context warns earlier than the rate limits:
+# filling the window costs a fresh session, while a rate limit only costs waiting.
+CTX_YELLOW=30; CTX_RED=50
+RATE_YELLOW=70; RATE_RED=90
+
 # pick ANSI color by usage threshold
 color_for() {
-  local pct=$1
-  if [ "$pct" -ge 90 ]; then printf '%b' "$RED"
-  elif [ "$pct" -ge 70 ]; then printf '%b' "$YELLOW"
+  local pct=$1 yellow=${2:-$RATE_YELLOW} red=${3:-$RATE_RED}
+  if [ "$pct" -ge "$red" ]; then printf '%b' "$RED"
+  elif [ "$pct" -ge "$yellow" ]; then printf '%b' "$YELLOW"
   else printf '%b' "$GREEN"
   fi
 }
@@ -59,7 +64,7 @@ line1=$(printf '%b[%s]%b 📁 %s' "$CYAN" "$model" "$RESET" "${dir##*/}")
 # --- context window ---
 ctx=$(echo "$input" | jq -r '.context_window.used_percentage // 0' | cut -d. -f1)
 [ -z "$ctx" ] && ctx=0
-ctx_color=$(color_for "$ctx")
+ctx_color=$(color_for "$ctx" "$CTX_YELLOW" "$CTX_RED")
 line2="Ctx $(bar "$ctx" "$ctx_color") $(pct_text "$ctx" "$ctx_color")"
 
 # --- 5-hour rate limit ---

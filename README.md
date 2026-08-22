@@ -6,7 +6,7 @@ Barra de status de duas linhas para o [Claude Code](https://claude.com/claude-co
 
 ![prévia da status line](preview.svg)
 
-Barras ficam verdes abaixo de 70%, amarelas entre 70-89% e vermelhas a partir de 90%.
+As barras de limite de uso (5h e 7 dias) ficam verdes abaixo de 70%, amarelas entre 70-89% e vermelhas a partir de 90%. A barra de contexto avisa mais cedo (amarela a partir de 30%, vermelha a partir de 50%): encher a janela obriga a começar uma sessão nova, enquanto um limite de uso só custa espera. Os quatro limiares ficam no topo do script, em `CONTEXT_THRESHOLDS` e `RATE_LIMIT_THRESHOLDS` (`CTX_YELLOW`/`CTX_RED` e `RATE_YELLOW`/`RATE_RED` na versão bash).
 
 ## Requisitos
 

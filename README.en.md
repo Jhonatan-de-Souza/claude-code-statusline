@@ -6,7 +6,7 @@ Two-line status line for [Claude Code](https://claude.com/claude-code) showing m
 
 ![status line preview](preview.svg)
 
-Bars turn green under 70%, yellow at 70-89%, red at 90%+.
+The rate-limit bars (5h and weekly) turn green under 70%, yellow at 70-89%, red at 90%+. The context bar warns earlier (yellow from 30%, red from 50%): filling the window forces a fresh session, while a rate limit only costs waiting. All four thresholds sit at the top of the script, in `CONTEXT_THRESHOLDS` and `RATE_LIMIT_THRESHOLDS` (`CTX_YELLOW`/`CTX_RED` and `RATE_YELLOW`/`RATE_RED` in the bash version).
 
 ## Requirements
 

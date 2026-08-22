@@ -15,11 +15,17 @@ GREEN, YELLOW, RED, CYAN, GRAY, RESET = (
 )
 BAR_WIDTH = 10
 
+# (yellow, red) thresholds per bar. Context warns earlier than the rate limits:
+# filling the window costs a fresh session, while a rate limit only costs waiting.
+CONTEXT_THRESHOLDS = (30, 50)
+RATE_LIMIT_THRESHOLDS = (70, 90)
 
-def color_for(pct):
-    if pct >= 90:
+
+def color_for(pct, thresholds=RATE_LIMIT_THRESHOLDS):
+    yellow, red = thresholds
+    if pct >= red:
         return RED
-    if pct >= 70:
+    if pct >= yellow:
         return YELLOW
     return GREEN
 
@@ -70,7 +76,7 @@ if branch:
 
 ctx_window = data.get("context_window", {}) or {}
 ctx = int(ctx_window.get("used_percentage") or 0)
-ctx_color = color_for(ctx)
+ctx_color = color_for(ctx, CONTEXT_THRESHOLDS)
 ctx_used = ctx_window.get("total_input_tokens")
 ctx_size = ctx_window.get("context_window_size")
 ctx_tokens = f" ({fmt_tokens(ctx_used)}/{fmt_tokens(ctx_size)})" if ctx_used and ctx_size else ""
