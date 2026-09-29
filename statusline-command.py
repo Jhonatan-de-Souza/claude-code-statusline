@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-"""Claude Code status line: model + dir, then colored bars for context, 5h and weekly rate limits."""
+"""Claude Code status line: model + dir, then colored bars for context, 5h and weekly rate limits, plus cache warmth."""
 import json
 import subprocess
 import sys
 import time
+from datetime import datetime
 
 # Windows defaults stdin/stdout to cp1252, which mangles UTF-8 JSON input
 # (accented paths) and can't encode emoji/block chars on output.
@@ -47,6 +48,63 @@ def fmt_reset(ts):
     diff = max(0, int(ts) - int(time.time()))
     h, m = divmod(diff // 60, 60)
     return f"{h}h{m:02d}m"
+
+
+def cache_status(transcript_path):
+    """Estimate prompt-cache warmth from the last main-thread API call in the transcript."""
+    if not transcript_path:
+        return None
+    try:
+        with open(transcript_path, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 512 * 1024))
+            lines = f.read().decode("utf-8", errors="ignore").splitlines()
+    except OSError:
+        return None
+
+    last_ts, last_usage, ttl = None, None, None
+    for raw in reversed(lines):
+        if '"assistant"' not in raw:
+            continue
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        if entry.get("type") != "assistant" or entry.get("isSidechain"):
+            continue
+        usage = (entry.get("message") or {}).get("usage")
+        if not usage:
+            continue
+        if last_ts is None:
+            last_ts, last_usage = entry.get("timestamp"), usage
+        creation = usage.get("cache_creation") or {}
+        if creation.get("ephemeral_1h_input_tokens"):
+            ttl = 3600
+        elif creation.get("ephemeral_5m_input_tokens"):
+            ttl = 300
+        if ttl:
+            break
+    if not last_ts:
+        return None
+
+    try:
+        called_at = datetime.fromisoformat(last_ts.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+    ttl = ttl or 300
+    remaining = int(called_at + ttl - time.time())
+
+    read = last_usage.get("cache_read_input_tokens") or 0
+    total = read + (last_usage.get("cache_creation_input_tokens") or 0) + (last_usage.get("input_tokens") or 0)
+    hit = f" {GRAY}{read * 100 // total}% hit{RESET}" if total else ""
+    ttl_label = "1h" if ttl == 3600 else "5m"
+
+    if remaining <= 0:
+        return f"Cache {RED}● cold{RESET} {GRAY}({ttl_label}){RESET}{hit}"
+    color = GREEN if remaining > ttl * 0.2 else YELLOW
+    m, s = divmod(remaining, 60)
+    left = f"{m}m{s:02d}s" if m < 10 else f"{m}m"
+    return f"Cache {color}● {left} left{RESET} {GRAY}({ttl_label}){RESET}{hit}"
 
 
 data = json.load(sys.stdin)
@@ -95,6 +153,10 @@ if week is not None:
     parts.append(
         f"7d {bar(week_i, week_color)} {pct_text(week_i, week_color)} (resets {week_reset})"
     )
+
+cache = cache_status(data.get("transcript_path"))
+if cache:
+    parts.append(cache)
 
 line2 = "  |  ".join(parts)
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Claude Code status line: model + dir, then colored bars for context, 5h and weekly rate limits.
+# Claude Code status line: model + dir, then colored bars for context, 5h and weekly rate limits, plus cache warmth.
 
 input=$(cat)
 
@@ -46,6 +46,55 @@ fmt_reset() {
   printf '%dh%02dm' "$h" "$m"
 }
 
+# token count -> "45.2k"
+fmt_tokens() {
+  awk -v n="$1" 'BEGIN { if (n >= 1000) printf "%.1fk", n / 1000; else printf "%d", n }'
+}
+
+# Estimate prompt-cache warmth from the last main-thread API call in the transcript.
+cache_status() {
+  local tp=$1
+  if [ -z "$tp" ] || [ ! -f "$tp" ]; then return; fi
+
+  # -> "<called_at epoch>\t<ttl>\t<cache read tokens>\t<total input tokens>"
+  local info
+  info=$(tail -c 524288 "$tp" | jq -Rrn '
+    [inputs | fromjson? | select(type == "object" and .type == "assistant"
+      and (.isSidechain | not) and .message.usage)]
+    | if length == 0 then empty else
+        .[-1] as $last
+        | ([reverse[] | .message.usage.cache_creation // {}
+            | if (.ephemeral_1h_input_tokens // 0) > 0 then 3600
+              elif (.ephemeral_5m_input_tokens // 0) > 0 then 300
+              else empty end] | first // 300) as $ttl
+        | $last.message.usage as $u
+        | [($last.timestamp | sub("\\.[0-9]+"; "") | fromdateiso8601), $ttl,
+           ($u.cache_read_input_tokens // 0),
+           (($u.cache_read_input_tokens // 0) + ($u.cache_creation_input_tokens // 0) + ($u.input_tokens // 0))]
+        | @tsv
+      end' 2>/dev/null)
+  info=${info//$'\r'/}
+  [ -z "$info" ] && return
+
+  local called ttl read total
+  IFS=$'\t' read -r called ttl read total <<< "$info"
+  local remaining=$(( called + ttl - $(date +%s) ))
+
+  local hit="" label="5m"
+  [ "$total" -gt 0 ] && printf -v hit ' %b%d%% hit%b' "$GRAY" $(( read * 100 / total )) "$RESET"
+  [ "$ttl" -eq 3600 ] && label="1h"
+
+  if [ "$remaining" -le 0 ]; then
+    printf 'Cache %b● cold%b %b(%s)%b%s' "$RED" "$RESET" "$GRAY" "$label" "$RESET" "$hit"
+    return
+  fi
+  local color=$YELLOW left
+  [ $(( remaining * 5 )) -gt "$ttl" ] && color=$GREEN
+  local m=$(( remaining / 60 )) s=$(( remaining % 60 ))
+  if [ "$m" -lt 10 ]; then printf -v left '%dm%02ds' "$m" "$s"; else left="${m}m"; fi
+  printf 'Cache %b● %s left%b %b(%s)%b%s' "$color" "$left" "$RESET" "$GRAY" "$label" "$RESET" "$hit"
+}
+
 model=$(echo "$input" | jq -r '.model.display_name')
 dir=$(echo "$input" | jq -r '.workspace.current_dir')
 branch=""
@@ -61,6 +110,11 @@ ctx=$(echo "$input" | jq -r '.context_window.used_percentage // 0' | cut -d. -f1
 [ -z "$ctx" ] && ctx=0
 ctx_color=$(color_for "$ctx")
 line2="Ctx $(bar "$ctx" "$ctx_color") $(pct_text "$ctx" "$ctx_color")"
+ctx_used=$(echo "$input" | jq -r '.context_window.total_input_tokens // 0')
+ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // 0')
+if [ "${ctx_used%.*}" -gt 0 ] 2>/dev/null && [ "${ctx_size%.*}" -gt 0 ] 2>/dev/null; then
+  line2="$line2 ($(fmt_tokens "$ctx_used")/$(fmt_tokens "$ctx_size"))"
+fi
 
 # --- 5-hour rate limit ---
 five=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
@@ -79,5 +133,9 @@ if [ -n "$week" ]; then
   week_color=$(color_for "$week_i")
   line2="$line2  |  7d $(bar "$week_i" "$week_color") $(pct_text "$week_i" "$week_color") (resets $(fmt_reset "$week_reset"))"
 fi
+
+# --- prompt cache ---
+cache=$(cache_status "$(echo "$input" | jq -r '.transcript_path // empty')")
+[ -n "$cache" ] && line2="$line2  |  $cache"
 
 printf '%s\n%s' "$line1" "$line2"

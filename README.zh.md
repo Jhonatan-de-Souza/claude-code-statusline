@@ -8,11 +8,20 @@
 
 用量低于 70% 显示绿色，70-89% 显示黄色，90% 及以上显示红色。
 
+### 缓存指示器
+
+第二行末尾显示最近一次 API 调用的提示缓存状态：
+
+- `Cache ● 4m12s left (5m) 92% hit` —— 缓存过期前的剩余时间、当前 TTL（5 分钟或 1 小时），以及输入中从缓存读取的比例。
+- 剩余时间超过 TTL 的 20% 时为绿色，即将过期时为黄色，过期后显示红色 `● cold`（下一条消息将重新处理全部上下文）。
+
+时间根据会话 transcript 估算。
+
 ## 环境要求
 
 - Claude Code CLI
 - **Windows/macOS/Linux + Python**：使用 `statusline-command.py`（需要 Python 3，无需额外依赖）
-- **macOS/Linux 无 Python**：使用 `statusline-command.sh`（需要 `bash`、`jq`、`git`）
+- **macOS/Linux 无 Python**：使用 `statusline-command.sh`（需要 `bash`、`jq`、`git`、`awk`）
 
 ## 安装步骤
 

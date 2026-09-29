@@ -8,11 +8,20 @@ Two-line status line for [Claude Code](https://claude.com/claude-code) showing m
 
 Bars turn green under 70%, yellow at 70-89%, red at 90%+.
 
+### Cache indicator
+
+The end of the second line shows the prompt-cache state of the last API call:
+
+- `Cache ● 4m12s left (5m) 92% hit` — time left before the cache expires, the TTL in use (5 minutes or 1 hour), and how much of the input was read from cache.
+- Green while more than 20% of the TTL remains, yellow when it's about to expire, and red `● cold` once it has expired (your next message will reprocess the whole context).
+
+The timing is estimated from the session transcript.
+
 ## Requirements
 
 - Claude Code CLI
 - **Windows/macOS/Linux with Python**: use `statusline-command.py` (needs Python 3, no extra packages)
-- **macOS/Linux without Python**: use `statusline-command.sh` (needs `bash`, `jq`, `git`)
+- **macOS/Linux without Python**: use `statusline-command.sh` (needs `bash`, `jq`, `git`, `awk`)
 
 ## Install
 

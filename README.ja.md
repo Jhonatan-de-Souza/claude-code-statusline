@@ -8,11 +8,20 @@
 
 使用率70%未満は緑、70〜89%は黄色、90%以上は赤で表示されます。
 
+### キャッシュ表示
+
+2行目の末尾に、直近のAPI呼び出しのプロンプトキャッシュの状態を表示します：
+
+- `Cache ● 4m12s left (5m) 92% hit` — キャッシュが切れるまでの残り時間、使用中のTTL（5分または1時間）、入力のうちキャッシュから読み込まれた割合。
+- TTLの20%以上残っていれば緑、期限が近づくと黄色、期限切れ後は赤の `● cold`（次のメッセージでコンテキスト全体が再処理されます）。
+
+時間はセッションのtranscriptから推定しています。
+
 ## 必要環境
 
 - Claude Code CLI
 - **Windows/macOS/Linux + Python**: `statusline-command.py` を使用（Python 3が必要、追加パッケージ不要）
-- **macOS/Linux（Pythonなし）**: `statusline-command.sh` を使用（`bash`、`jq`、`git` が必要）
+- **macOS/Linux（Pythonなし）**: `statusline-command.sh` を使用（`bash`、`jq`、`git`、`awk` が必要）
 
 ## インストール
 

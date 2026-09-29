@@ -8,11 +8,20 @@ Barra de status de duas linhas para o [Claude Code](https://claude.com/claude-co
 
 Barras ficam verdes abaixo de 70%, amarelas entre 70-89% e vermelhas a partir de 90%.
 
+### Indicador de cache
+
+No fim da segunda linha aparece o estado do cache de prompt da última chamada à API:
+
+- `Cache ● 4m12s left (5m) 92% hit` — tempo restante antes do cache expirar, o TTL em uso (5 minutos ou 1 hora) e quanto do input veio do cache.
+- Verde enquanto resta mais de 20% do TTL, amarelo perto de expirar e `● cold` em vermelho depois que expirou (a próxima mensagem vai reprocessar todo o contexto).
+
+O tempo é estimado a partir do transcript da sessão.
+
 ## Requisitos
 
 - Claude Code CLI
 - **Windows/macOS/Linux com Python**: use `statusline-command.py` (precisa de Python 3, sem pacotes extras)
-- **macOS/Linux sem Python**: use `statusline-command.sh` (precisa de `bash`, `jq`, `git`)
+- **macOS/Linux sem Python**: use `statusline-command.sh` (precisa de `bash`, `jq`, `git`, `awk`)
 
 ## Instalação
 
