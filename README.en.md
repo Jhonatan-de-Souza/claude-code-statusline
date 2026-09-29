@@ -4,7 +4,7 @@
 
 Two-line status line for [Claude Code](https://claude.com/claude-code) showing model, folder, git branch, and colored usage bars for context window, 5-hour limit, and 7-day limit.
 
-![status line preview](preview.svg)
+![status line preview](preview-v2.svg)
 
 Bars turn green under 70%, yellow at 70-89%, red at 90%+.
 

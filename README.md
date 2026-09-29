@@ -4,7 +4,7 @@
 
 Barra de status de duas linhas para o [Claude Code](https://claude.com/claude-code) mostrando modelo, pasta, branch do git e barras coloridas de uso: janela de contexto, limite de 5 horas e limite de 7 dias.
 
-![prévia da status line](preview.svg)
+![prévia da status line](preview-v2.svg)
 
 Barras ficam verdes abaixo de 70%, amarelas entre 70-89% e vermelhas a partir de 90%.
 

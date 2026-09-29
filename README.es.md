@@ -4,7 +4,7 @@
 
 Barra de estado de dos líneas para [Claude Code](https://claude.com/claude-code) que muestra modelo, carpeta, rama de git y barras de uso con color para la ventana de contexto, el límite de 5 horas y el límite de 7 días.
 
-![vista previa de la barra de estado](preview.svg)
+![vista previa de la barra de estado](preview-v2.svg)
 
 Las barras se ponen verdes por debajo de 70%, amarillas entre 70-89% y rojas a partir de 90%.
 

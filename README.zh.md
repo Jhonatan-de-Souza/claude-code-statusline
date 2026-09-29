@@ -4,7 +4,7 @@
 
 为 [Claude Code](https://claude.com/claude-code) 提供的两行状态栏，显示模型、目录、git 分支，以及上下文窗口、5小时限额和7天限额的彩色用量条。
 
-![状态栏预览](preview.svg)
+![状态栏预览](preview-v2.svg)
 
 用量低于 70% 显示绿色，70-89% 显示黄色，90% 及以上显示红色。
 
