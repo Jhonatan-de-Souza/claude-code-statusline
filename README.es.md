@@ -4,18 +4,22 @@
 
 Barra de estado de dos líneas para [Claude Code](https://claude.com/claude-code) que muestra modelo, carpeta, rama de git y barras de uso con color para la ventana de contexto, el límite de 5 horas y el límite de 7 días.
 
-![vista previa de la barra de estado](preview-v2.svg)
+![vista previa de la barra de estado](preview-v5.svg)
 
-Las barras se ponen verdes por debajo de 70%, amarillas entre 70-89% y rojas a partir de 90%.
+Los números se ponen verdes por debajo de 70%, amarillos entre 70-89% y rojos a partir de 90%. `(resets 3h47m)` es cuándo se reinicia ese límite.
+
+La barra de estado se ajusta al ancho del terminal. Al estrechar la ventana, los segmentos pasan a una nueva línea. Si aun así no caben en dos líneas, oculta las barras y luego los tiempos de reinicio.
 
 ### Indicador de caché
 
-Al final de la segunda línea aparece el estado de la caché de prompt de la última llamada a la API:
+El último segmento muestra la caché de prompt de la conversación principal:
 
-- `Cache ● 4m12s left (5m) 92% hit` — tiempo restante antes de que la caché expire, el TTL en uso (5 minutos o 1 hora) y cuánto del input se leyó de la caché.
-- Verde mientras quede más del 20% del TTL, amarillo cuando está por expirar y `● cold` en rojo cuando ya expiró (tu próximo mensaje volverá a procesar todo el contexto).
+- `cache 47m of 1h`: tiempo hasta que la caché se enfríe y el TTL en uso.
+- Verde mientras quede más del 20% del TTL, amarillo cuando está por expirar y `cold` en rojo cuando ya expiró. En frío también muestra cuántos tokens tu próximo mensaje volverá a escribir en la caché (`cold · 73k to rewrite`).
 
-El tiempo se estima a partir del transcript de la sesión.
+Claude Code elige el TTL por petición: **1 hora** con una suscripción de Claude dentro del uso del plan, **5 minutos** cuando usas créditos (uso extra), una clave de API o un proveedor de nube, o cuando defines `FORCE_PROMPT_CACHING_5M=1` / `promptCacheTtl: "5m"`. Escribir en la caché de 5 minutos cuesta 1,25x el precio de input y en la de 1 hora 2x; las lecturas de caché cuestan 0,1x o menos. Ver [How Claude Code uses prompt caching](https://code.claude.com/docs/en/prompt-caching#cache-lifetime).
+
+El script lee los datos `prompt_cache` del propio Claude Code (v2.1.251+). En versiones anteriores lo estima a partir del transcript de la sesión.
 
 ## Requisitos
 

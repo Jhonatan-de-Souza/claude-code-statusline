@@ -1,20 +1,40 @@
 #!/usr/bin/env python
-"""Claude Code status line: model + dir, then colored bars for context, 5h and weekly rate limits, plus cache warmth."""
+"""Claude Code status line: model + dir + branch, then context, 5h/7d rate limits and prompt-cache warmth.
+
+Output fits the terminal width (COLUMNS): segments wrap onto new lines, and details drop only when wrapping is not enough.
+"""
 import json
+import os
+import re
 import subprocess
 import sys
 import time
 from datetime import datetime
 
 # Windows defaults stdin/stdout to cp1252, which mangles UTF-8 JSON input
-# (accented paths) and can't encode emoji/block chars on output.
+# (accented paths) and can't encode block chars on output.
 sys.stdin.reconfigure(encoding="utf-8")
 sys.stdout.reconfigure(encoding="utf-8")
 
-GREEN, YELLOW, RED, CYAN, GRAY, RESET = (
-    "\033[32m", "\033[33m", "\033[31m", "\033[36m", "\033[2m", "\033[0m",
+GREEN, YELLOW, RED, CYAN, BOLD, RESET = (
+    "\033[32m", "\033[33m", "\033[31m", "\033[36m", "\033[1m", "\033[0m",
 )
+# 256-color grays instead of "dim" (\033[2m), which is too faint in many themes.
+GRAY = "\033[38;5;244m"   # secondary text
+TRACK = "\033[38;5;238m"  # empty part of a bar
 BAR_WIDTH = 10
+# Separator per detail level (full / medium / short); the short level is tighter.
+SEPS = [f"  {GRAY}│{RESET}  "] * 2 + [f" {GRAY}│{RESET} "]
+# As the terminal narrows, segments wrap onto new lines. Past this many stat
+# lines, drop to a less detailed level instead of wrapping further.
+MAX_STAT_LINES = 2
+ANSI = re.compile(r"\033\[[0-9;]*m")
+# Claude Code pads the status line a little; leave room so it never wraps.
+MARGIN = 4
+
+
+def visible_len(s):
+    return len(ANSI.sub("", s))
 
 
 def color_for(pct):
@@ -26,32 +46,42 @@ def color_for(pct):
 
 
 def bar(pct, color):
-    pct = min(pct, 100)
-    filled = pct * BAR_WIDTH // 100
-    empty = BAR_WIDTH - filled
-    return f"{color}{'█' * filled}{GRAY}{'░' * empty}{RESET}"
+    filled = min(pct, 100) * BAR_WIDTH // 100
+    return f"{color}{'█' * filled}{TRACK}{'░' * (BAR_WIDTH - filled)}{RESET}"
 
 
-def pct_text(pct, color):
-    return f"{color}{pct}%{RESET}"
+def num(text, color):
+    return f"{BOLD}{color}{text}{RESET}"
 
 
 def fmt_tokens(n):
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
     if n >= 1000:
-        return f"{n / 1000:.1f}k"
+        return f"{round(n / 1000)}k"
     return str(n)
 
 
-def fmt_reset(ts):
-    if not ts:
-        return "--"
-    diff = max(0, int(ts) - int(time.time()))
-    h, m = divmod(diff // 60, 60)
-    return f"{h}h{m:02d}m"
+def fmt_duration(secs):
+    """Short countdown: 45s, 12m, 4h38m, 5d18h."""
+    secs = max(0, int(secs))
+    if secs < 60:
+        return f"{secs}s"
+    m = secs // 60
+    if m < 60:
+        return f"{m}m"
+    h, m = divmod(m, 60)
+    if h < 24:
+        return f"{h}h{m:02d}m"
+    d, h = divmod(h, 24)
+    return f"{d}d{h:02d}h"
 
 
-def cache_status(transcript_path):
-    """Estimate prompt-cache warmth from the last main-thread API call in the transcript."""
+def cache_from_transcript(transcript_path):
+    """Fallback for Claude Code < 2.1.251, which doesn't send `prompt_cache`.
+
+    Estimates warmth from the last main-thread API call in the transcript.
+    """
     if not transcript_path:
         return None
     try:
@@ -62,7 +92,7 @@ def cache_status(transcript_path):
     except OSError:
         return None
 
-    last_ts, last_usage, ttl = None, None, None
+    last_ts, ttl = None, None
     for raw in reversed(lines):
         if '"assistant"' not in raw:
             continue
@@ -76,41 +106,86 @@ def cache_status(transcript_path):
         if not usage:
             continue
         if last_ts is None:
-            last_ts, last_usage = entry.get("timestamp"), usage
+            last_ts = entry.get("timestamp")
+        # The most recent cache write tells us the TTL. When a request mixes
+        # TTLs, the 5m entries sit at the end (the conversation tail), so the
+        # bulk of the prefix goes cold after 5 minutes: the short TTL wins.
         creation = usage.get("cache_creation") or {}
-        if creation.get("ephemeral_1h_input_tokens"):
-            ttl = 3600
-        elif creation.get("ephemeral_5m_input_tokens"):
-            ttl = 300
+        if creation.get("ephemeral_5m_input_tokens"):
+            ttl = "5m"
+        elif creation.get("ephemeral_1h_input_tokens"):
+            ttl = "1h"
         if ttl:
             break
     if not last_ts:
         return None
-
     try:
         called_at = datetime.fromisoformat(last_ts.replace("Z", "+00:00")).timestamp()
     except ValueError:
         return None
-    ttl = ttl or 300
-    remaining = int(called_at + ttl - time.time())
+    ttl = ttl or "5m"
+    expires_at = called_at + (3600 if ttl == "1h" else 300)
+    return {"ttl": ttl, "expires_at": expires_at, "warm": expires_at > time.time()}
 
-    read = last_usage.get("cache_read_input_tokens") or 0
-    total = read + (last_usage.get("cache_creation_input_tokens") or 0) + (last_usage.get("input_tokens") or 0)
-    hit = f" {GRAY}{read * 100 // total}% hit{RESET}" if total else ""
-    ttl_label = "1h" if ttl == 3600 else "5m"
 
-    if remaining <= 0:
-        return f"Cache {RED}● cold{RESET} {GRAY}({ttl_label}){RESET}{hit}"
-    color = GREEN if remaining > ttl * 0.2 else YELLOW
-    m, s = divmod(remaining, 60)
-    left = f"{m}m{s:02d}s" if m < 10 else f"{m}m"
-    return f"Cache {color}● {left} left{RESET} {GRAY}({ttl_label}){RESET}{hit}"
+def cache_segments(pc):
+    """Cache segment at each detail level (most detailed first)."""
+    if not pc or pc.get("caching_observed") is False:
+        return None
+    ttl = pc.get("ttl") or "5m"
+    ttl_secs = 3600 if ttl == "1h" else 300
+    expires_at = pc.get("expires_at")
+    remaining = int(expires_at - time.time()) if expires_at else 0
+
+    if not pc.get("warm") or remaining <= 0:
+        recache = pc.get("recache_tokens_if_cold")
+        cost = f" {GRAY}· {fmt_tokens(recache)} to rewrite{RESET}" if recache else ""
+        cold = num("cold", RED)
+        return [f"cache {cold}{cost}", f"cache {cold}", f"cache {cold}"]
+
+    color = GREEN if remaining > ttl_secs * 0.2 else YELLOW
+    if remaining < 600:
+        m, s = divmod(remaining, 60)
+        left = num(f"{m}:{s:02d}", color)
+    else:
+        left = num(fmt_duration(remaining), color)
+    # Keep the "cache" label even when short: after wrapping it may sit alone on a line.
+    return [f"cache {left} {GRAY}of {ttl}{RESET}", f"cache {left}", f"cache {left}"]
+
+
+def wrap(parts, width, sep):
+    """Pack segments into lines no wider than `width`, like word wrapping."""
+    lines, cur = [], ""
+    for part in parts:
+        candidate = f"{cur}{sep}{part}" if cur else part
+        if cur and visible_len(candidate) > width:
+            lines.append(cur)
+            cur = part
+        else:
+            cur = candidate
+    return lines + [cur] if cur else lines
+
+
+def layout(segments, width):
+    """Most detailed level that fits in MAX_STAT_LINES wrapped lines, else the shortest level wrapped freely."""
+    for i, sep in enumerate(SEPS):
+        parts = [s[i] for s in segments]
+        lines = wrap(parts, width, sep)
+        if len(lines) <= MAX_STAT_LINES and all(visible_len(p) <= width for p in parts):
+            return lines
+    return lines
+
+
+def truncate(text, n):
+    return text if len(text) <= n else text[: max(1, n - 1)] + "…"
 
 
 data = json.load(sys.stdin)
+width = (int(os.environ.get("COLUMNS") or 0) or 120) - MARGIN
 
-model = data.get("model", {}).get("display_name", "?")
-cwd = data.get("workspace", {}).get("current_dir", "")
+# --- line 1: model · dir · branch ---
+model = (data.get("model") or {}).get("display_name", "?")
+cwd = (data.get("workspace") or {}).get("current_dir", "")
 dirname = cwd.rstrip("/\\").split("/")[-1].split("\\")[-1] or cwd
 
 branch = ""
@@ -122,43 +197,55 @@ try:
 except Exception:
     pass
 
-line1 = f"{CYAN}[{model}]{RESET} \U0001F4C1 {dirname}"
-if branch:
-    line1 += f" | \U0001F33F {branch}"
+# On narrow terminals, trim the longer of dir/branch until the line fits.
+room = width - len(model) - (6 if branch else 3)
+while len(dirname) + len(branch) > room and max(len(dirname), len(branch)) > 8:
+    if len(dirname) >= len(branch):
+        dirname = truncate(dirname, len(dirname) - 1)
+    else:
+        branch = truncate(branch, len(branch) - 1)
 
-ctx_window = data.get("context_window", {}) or {}
+dot = f" {GRAY}·{RESET} "
+line1 = f"{CYAN}{model}{RESET}{dot}{dirname}"
+if branch:
+    line1 += f"{dot}{GREEN}{branch}{RESET}"
+
+# --- line 2: each segment rendered at 3 detail levels ---
+segments = []
+
+ctx_window = data.get("context_window") or {}
 ctx = int(ctx_window.get("used_percentage") or 0)
-ctx_color = color_for(ctx)
+c = color_for(ctx)
 ctx_used = ctx_window.get("total_input_tokens")
 ctx_size = ctx_window.get("context_window_size")
-ctx_tokens = f" ({fmt_tokens(ctx_used)}/{fmt_tokens(ctx_size)})" if ctx_used and ctx_size else ""
-parts = [f"Ctx {bar(ctx, ctx_color)} {pct_text(ctx, ctx_color)}{ctx_tokens}"]
+# Used/total tokens stay at every detail level: it's the number that matters most.
+tokens = ""
+if ctx_used:
+    total = f"/{fmt_tokens(ctx_size)}" if ctx_size else ""
+    tokens = f" {fmt_tokens(ctx_used)}{GRAY}{total}{RESET}"
+segments.append([
+    f"ctx {bar(ctx, c)} {num(f'{ctx}%', c)}{tokens}",
+    f"ctx {num(f'{ctx}%', c)}{tokens}",
+    f"ctx {num(f'{ctx}%', c)}{tokens}",
+])
 
 rate_limits = data.get("rate_limits") or {}
+for key, label in (("five_hour", "5h"), ("seven_day", "7d")):
+    rl = rate_limits.get(key) or {}
+    if rl.get("used_percentage") is None:
+        continue
+    pct = int(rl["used_percentage"])
+    c = color_for(pct)
+    resets = rl.get("resets_at")
+    reset_txt = f" {GRAY}(resets {fmt_duration(int(resets) - time.time())}){RESET}" if resets else ""
+    segments.append([
+        f"{label} {bar(pct, c)} {num(f'{pct}%', c)}{reset_txt}",
+        f"{label} {num(f'{pct}%', c)}{reset_txt}",
+        f"{label} {num(f'{pct}%', c)}",
+    ])
 
-five = rate_limits.get("five_hour", {}).get("used_percentage")
-if five is not None:
-    five_i = int(five)
-    five_color = color_for(five_i)
-    five_reset = fmt_reset(rate_limits.get("five_hour", {}).get("resets_at"))
-    parts.append(
-        f"5h {bar(five_i, five_color)} {pct_text(five_i, five_color)} (resets {five_reset})"
-    )
-
-week = rate_limits.get("seven_day", {}).get("used_percentage")
-if week is not None:
-    week_i = int(week)
-    week_color = color_for(week_i)
-    week_reset = fmt_reset(rate_limits.get("seven_day", {}).get("resets_at"))
-    parts.append(
-        f"7d {bar(week_i, week_color)} {pct_text(week_i, week_color)} (resets {week_reset})"
-    )
-
-cache = cache_status(data.get("transcript_path"))
+cache = cache_segments(data.get("prompt_cache") or cache_from_transcript(data.get("transcript_path")))
 if cache:
-    parts.append(cache)
+    segments.append(cache)
 
-line2 = "  |  ".join(parts)
-
-print(line1)
-print(line2, end="")
+print("\n".join([line1] + layout(segments, width)), end="")

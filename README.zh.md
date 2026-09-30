@@ -4,18 +4,22 @@
 
 为 [Claude Code](https://claude.com/claude-code) 提供的两行状态栏，显示模型、目录、git 分支，以及上下文窗口、5小时限额和7天限额的彩色用量条。
 
-![状态栏预览](preview-v2.svg)
+![状态栏预览](preview-v5.svg)
 
-用量低于 70% 显示绿色，70-89% 显示黄色，90% 及以上显示红色。
+数值低于 70% 显示绿色，70-89% 显示黄色，90% 及以上显示红色。`(resets 3h47m)` 表示该限额何时重置。
+
+状态栏会适应终端宽度。窗口变窄时，各段会自动换到下一行；如果两行仍放不下，会先隐藏用量条，再隐藏重置时间。
 
 ### 缓存指示器
 
-第二行末尾显示最近一次 API 调用的提示缓存状态：
+最后一段显示主对话的提示缓存状态：
 
-- `Cache ● 4m12s left (5m) 92% hit` —— 缓存过期前的剩余时间、当前 TTL（5 分钟或 1 小时），以及输入中从缓存读取的比例。
-- 剩余时间超过 TTL 的 20% 时为绿色，即将过期时为黄色，过期后显示红色 `● cold`（下一条消息将重新处理全部上下文）。
+- `cache 47m of 1h`：距离缓存失效的时间和当前 TTL。
+- 剩余时间超过 TTL 的 20% 时为绿色，即将过期时为黄色，过期后显示红色 `cold`。失效时还会显示下一条消息需要重新写入缓存的 token 数（`cold · 73k to rewrite`）。
 
-时间根据会话 transcript 估算。
+Claude Code 按请求选择 TTL：Claude 订阅在套餐额度内为 **1 小时**；使用额外用量额度、API key 或云服务商时为 **5 分钟**，设置 `FORCE_PROMPT_CACHING_5M=1` / `promptCacheTtl: "5m"` 时也是 5 分钟。5 分钟缓存写入价格为输入价格的 1.25 倍，1 小时为 2 倍；缓存读取为 0.1 倍或更低。详见 [How Claude Code uses prompt caching](https://code.claude.com/docs/en/prompt-caching#cache-lifetime)。
+
+脚本读取 Claude Code 自带的 `prompt_cache` 数据（v2.1.251+）。旧版本则根据会话 transcript 估算。
 
 ## 环境要求
 

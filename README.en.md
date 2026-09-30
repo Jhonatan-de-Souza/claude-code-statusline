@@ -2,20 +2,24 @@
 
 # Claude Code Status Line
 
-Two-line status line for [Claude Code](https://claude.com/claude-code) showing model, folder, git branch, and colored usage bars for context window, 5-hour limit, and 7-day limit.
+Compact two-line status line for [Claude Code](https://claude.com/claude-code) showing model, folder, git branch, and color-coded usage for context window, 5-hour limit, and 7-day limit.
 
-![status line preview](preview-v2.svg)
+![status line preview](preview-v5.svg)
 
-Bars turn green under 70%, yellow at 70-89%, red at 90%+.
+Numbers turn green under 70%, yellow at 70-89%, red at 90%+. `(resets 3h47m)` is when that limit resets.
+
+The status line fits the terminal width. As the window narrows, segments wrap onto a new line. If they still don't fit in two lines, it drops the bars, then the reset times.
 
 ### Cache indicator
 
-The end of the second line shows the prompt-cache state of the last API call:
+The last segment shows the prompt cache of the main conversation:
 
-- `Cache ● 4m12s left (5m) 92% hit` — time left before the cache expires, the TTL in use (5 minutes or 1 hour), and how much of the input was read from cache.
-- Green while more than 20% of the TTL remains, yellow when it's about to expire, and red `● cold` once it has expired (your next message will reprocess the whole context).
+- `cache 47m of 1h`: time until the cache goes cold and the TTL in use.
+- Green while more than 20% of the TTL remains, yellow when it's about to expire, red `cold` once it has expired. When cold it also shows how many tokens your next message will write to the cache again (`cold · 73k to rewrite`).
 
-The timing is estimated from the session transcript.
+Claude Code picks the TTL per request: **1 hour** on a Claude subscription within plan usage, **5 minutes** when you're on usage credits (extra usage), an API key or a cloud provider, or when you set `FORCE_PROMPT_CACHING_5M=1` / `promptCacheTtl: "5m"`. A 5-minute cache write costs 1.25x the input price and a 1-hour write costs 2x; cache reads cost 0.1x or less. See [How Claude Code uses prompt caching](https://code.claude.com/docs/en/prompt-caching#cache-lifetime).
+
+The script reads Claude Code's own `prompt_cache` data (v2.1.251+). On older versions it estimates from the session transcript.
 
 ## Requirements
 

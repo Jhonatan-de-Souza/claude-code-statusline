@@ -4,18 +4,22 @@
 
 Barra de status de duas linhas para o [Claude Code](https://claude.com/claude-code) mostrando modelo, pasta, branch do git e barras coloridas de uso: janela de contexto, limite de 5 horas e limite de 7 dias.
 
-![prévia da status line](preview-v2.svg)
+![prévia da status line](preview-v5.svg)
 
-Barras ficam verdes abaixo de 70%, amarelas entre 70-89% e vermelhas a partir de 90%.
+Os números ficam verdes abaixo de 70%, amarelos entre 70-89% e vermelhos a partir de 90%. `(resets 3h47m)` é quando aquele limite reseta.
+
+A status line se ajusta à largura do terminal. Conforme a janela estreita, os segmentos quebram para uma nova linha. Se ainda não couberem em duas linhas, ela esconde as barras e depois os tempos de reset.
 
 ### Indicador de cache
 
-No fim da segunda linha aparece o estado do cache de prompt da última chamada à API:
+O último segmento mostra o cache de prompt da conversa principal:
 
-- `Cache ● 4m12s left (5m) 92% hit` — tempo restante antes do cache expirar, o TTL em uso (5 minutos ou 1 hora) e quanto do input veio do cache.
-- Verde enquanto resta mais de 20% do TTL, amarelo perto de expirar e `● cold` em vermelho depois que expirou (a próxima mensagem vai reprocessar todo o contexto).
+- `cache 47m of 1h`: tempo até o cache esfriar e o TTL em uso.
+- Verde enquanto resta mais de 20% do TTL, amarelo perto de expirar e `cold` em vermelho depois que expirou. Quando frio, mostra também quantos tokens a próxima mensagem vai gravar de novo no cache (`cold · 73k to rewrite`).
 
-O tempo é estimado a partir do transcript da sessão.
+O Claude Code escolhe o TTL por requisição: **1 hora** na assinatura Claude dentro do uso do plano, **5 minutos** quando você está usando créditos (uso extra), chave de API ou provedor de nuvem, ou quando define `FORCE_PROMPT_CACHING_5M=1` / `promptCacheTtl: "5m"`. Gravar no cache de 5 minutos custa 1,25x o preço de input e no de 1 hora custa 2x; leituras do cache custam 0,1x ou menos. Veja [How Claude Code uses prompt caching](https://code.claude.com/docs/en/prompt-caching#cache-lifetime).
+
+O script lê os dados `prompt_cache` do próprio Claude Code (v2.1.251+). Em versões mais antigas, estima a partir do transcript da sessão.
 
 ## Requisitos
 
